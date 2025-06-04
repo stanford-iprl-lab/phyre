@@ -99,6 +99,7 @@ class ActionSimulator():
             phyre.simulator.serialize(task) for task in self._tasks)
         self._keep_spaces = self._action_mapper.KEEP_SPACE_AROUND_BODIES
         self._task_ids = tuple(task.taskId for task in self._tasks)
+        self.runs = []
 
     def sample(self, valid_only=True, rng=None) -> ActionLike:
         """Sample a random (valid) action from the action space."""
@@ -162,47 +163,51 @@ class ActionSimulator():
         return user_input, is_valid
 
     def _simulate_user_input(
-            self, task_index, user_input, need_images, need_featurized_objects,
-            stride) -> Tuple[SimulationStatus, MaybeImages, MaybeObjects]:
+            self, task_index, user_input, need_images, need_featurized_objects, need_collisions,
+            stride, noise) -> Tuple[SimulationStatus, MaybeImages, MaybeObjects]:
         serialzed_task = self._serialized[task_index]
-        # FIXME: merge this into single call to simulator.
-        if not self._action_mapper.OCCLUSIONS_ALLOWED:
-            if phyre.simulator.check_for_occlusions(
-                    serialzed_task,
-                    user_input,
-                    keep_space_around_bodies=self._keep_spaces):
-                return SimulationStatus.INVALID_INPUT, None, None
+        # if not self._action_mapper.OCCLUSIONS_ALLOWED:
+        #     if phyre.simulator.check_for_occlusions(
+        #             serialzed_task,
+        #             user_input,
+        #             keep_space_around_bodies=self._keep_spaces):
+        #         return SimulationStatus.INVALID_INPUT, None, None, None
 
         if not need_images and not need_featurized_objects:
             stride = 100000
-        is_solved, had_occlusions, images, objects = phyre.simulator.magic_ponies(
+        is_solved, had_occlusions, images, objects, collisions = phyre.simulator.magic_ponies(
             serialzed_task,
             user_input,
             stride=stride,
+            noise=noise,
             keep_space_around_bodies=self._keep_spaces,
             need_images=need_images,
-            need_featurized_objects=need_featurized_objects)
+            need_featurized_objects=need_featurized_objects,
+            need_collisions=need_collisions)
         if not need_images:
             images = None
         if not need_featurized_objects:
             objects = None
+        if not need_collisions:
+            collisions = None
 
         # We checked for occulsions before simulation, so being here means we
         # have a bug.
-        assert not had_occlusions or self._action_mapper.OCCLUSIONS_ALLOWED
-
-        if is_solved:
+        if had_occlusions and not self._action_mapper.OCCLUSIONS_ALLOWED:
+            status = SimulationStatus.INVALID_INPUT
+        elif is_solved:
             status = SimulationStatus.SOLVED
         else:
             status = SimulationStatus.NOT_SOLVED
 
-        return status, images, objects
+        return status, images, objects, collisions
 
     def simulate_single(self,
                         task_index: int,
                         action: ActionLike,
                         need_images: bool = True,
                         stride: int = phyre.simulator.DEFAULT_STRIDE,
+                        noise: bool = False,
                         stable: bool = False
                        ) -> Tuple[SimulationStatus, MaybeImages]:
         """Deprecated in version 0.2.0 in favor of simulate_action.
@@ -234,6 +239,7 @@ class ActionSimulator():
                                           need_images=need_images,
                                           need_featurized_objects=False,
                                           stride=stride,
+                                          noise=noise,
                                           stable=stable)
         return simulation.status, simulation.images
 
@@ -243,7 +249,9 @@ class ActionSimulator():
                         *,
                         need_images: bool = True,
                         need_featurized_objects: bool = False,
+                        need_collisions: bool = False,
                         stride: int = phyre.simulator.DEFAULT_STRIDE,
+                        noise: bool = False,
                         stable: bool = False) -> phyre.simulation.Simulation:
         """Runs simluation for the action.
 
@@ -271,35 +279,46 @@ class ActionSimulator():
                  and simulation.featurized_objects.
         """
         user_input, is_valid = self._get_user_input(action)
-        if not is_valid:
-            return phyre.simulation.Simulation(
-                status=SimulationStatus.INVALID_INPUT)
+        # if not is_valid:
+        #     return phyre.simulation.Simulation(
+        #         status=SimulationStatus.INVALID_INPUT)
 
-        main_status, images, objects = self._simulate_user_input(
-            task_index, user_input, need_images, need_featurized_objects,
-            stride)
+        main_status, images, objects, collisions = self._simulate_user_input(
+            task_index, user_input, need_images, need_featurized_objects, need_collisions,
+            stride, noise)
+        main_status = SimulationStatus.INVALID_INPUT if not is_valid else main_status
         if not stable or not main_status.is_solved():
             return phyre.simulation.Simulation(status=main_status,
                                                images=images,
-                                               featurized_objects=objects)
+                                               featurized_objects=objects,
+                                               collisions=collisions)
 
         for modified_user_input in _yield_user_input_neighborhood(user_input):
-            status, _, _ = self._simulate_user_input(
+            status, _, _, _ = self._simulate_user_input(
                 task_index,
                 modified_user_input,
                 need_images=False,
                 need_featurized_objects=False,
-                stride=stride)
+                need_collisions=False,
+                stride=stride,
+                noise=noise)
             if status.is_not_solved():
                 return phyre.simulation.Simulation(
                     status=SimulationStatus.UNSTABLY_SOLVED,
                     images=images,
-                    featurized_objects=objects)
+                    featurized_objects=objects,
+                    collisions=collisions)
         return phyre.simulation.Simulation(
             status=SimulationStatus.STABLY_SOLVED,
             images=images,
-            featurized_objects=objects)
-
+            featurized_objects=objects,
+            collisions=collisions)
+    
+    def add_run(self, run):
+        self.runs.append(run)
+    
+    def get_runs(self,):
+        return self.runs
 
 def _yield_user_input_neighborhood(base_user_input):
     for dx in (-0.5, 0, 0.5):
@@ -365,3 +384,5 @@ def initialize_simulator(task_ids: Sequence[str],
     """Initialize ActionSimulator for given tasks and tier."""
     tasks = phyre.loader.load_compiled_task_list(task_ids)
     return ActionSimulator(tasks, action_tier)
+
+

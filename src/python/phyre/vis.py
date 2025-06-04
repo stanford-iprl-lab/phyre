@@ -50,14 +50,14 @@ SOLVE_STATUS_COLORS = np.array(
 
 
 def _to_float(img):
-    return np.array(img, dtype=np.float) / 255.
+    return np.array(img, dtype=float) / 255.
 
 
 def observations_to_float_rgb(scene: np.ndarray,
                               user_input: Tuple[Tuple[int, int], ...] = (),
                               is_solved: Optional[bool] = None) -> np.ndarray:
     """Convert an observation as returned by a simulator to an image."""
-    return _to_float(observations_to_uint8_rgb(scene, user_input, is_solved))
+    return _to_float(observations_to_uint8_rgb(scene.astype(np.uint8), user_input, is_solved))
 
 
 def observations_to_uint8_rgb(scene: np.ndarray,

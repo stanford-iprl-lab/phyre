@@ -76,11 +76,11 @@ TEST(ParallelSimulationTest, CheckConsistency) {
   const int maxSteps = 100;  // To make the test faster.
   std::vector<TaskSimulation> groundTruthSimulation;
   for (const Task& task : tasks) {
-    groundTruthSimulation.push_back(simulateTask(task, maxSteps));
+    groundTruthSimulation.push_back(simulateTask(task, maxSteps, false));
   }
 
   const std::vector<TaskSimulation> parallelSimulation =
-      simulateTasksInParallel(tasks, /*numWorkers=*/3, maxSteps);
+      simulateTasksInParallel(tasks, /*numWorkers=*/3, maxSteps, false);
 
   for (size_t i = 0; i < tasks.size(); ++i) {
     ASSERT_EQ(groundTruthSimulation[i], parallelSimulation[i])
@@ -104,11 +104,11 @@ TEST(ParallelSimulationTest, CheckConsistencyWithStride) {
   const int maxSteps = 100;  // To make the test faster.
   std::vector<TaskSimulation> groundTruthSimulation;
   for (const Task& task : tasks) {
-    groundTruthSimulation.push_back(simulateTask(task, maxSteps, stride));
+    groundTruthSimulation.push_back(simulateTask(task, maxSteps, stride, false));
   }
 
   const std::vector<TaskSimulation> parallelSimulation =
-      simulateTasksInParallel(tasks, /*numWorkers=*/3, maxSteps, stride);
+      simulateTasksInParallel(tasks, /*numWorkers=*/3, maxSteps, stride, false);
 
   for (size_t i = 0; i < tasks.size(); ++i) {
     ASSERT_EQ(groundTruthSimulation[i], parallelSimulation[i])

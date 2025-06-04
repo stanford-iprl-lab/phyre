@@ -16,7 +16,7 @@ import Konva from "konva";
 import { Stage, Layer, Circle, Shape } from 'react-konva';
 
 export const RESOLUTION = 2;
-const DRAW_COLOR = window.Color.LIGHT_RED;
+const DRAW_COLOR = "#f34f46";
 
 const MIN_RADIUS = 5;
 const DEFAULT_RADIUS = 10;

@@ -25,7 +25,7 @@ TEST(TaskTest, SimulateTasksWithEmptySolutions) {
 
   for (const int32_t task_id : taskIds) {
     const task::Task task = getTaskFromId(task_id, kTestTaskFolder);
-    const task::TaskSimulation taskSimulation = simulateTask(task, 1000);
+    const task::TaskSimulation taskSimulation = simulateTask(task, 1000, false);
     EXPECT_TRUE(taskSimulation.isSolution)
         << "The empty solutions wasn't correct for task " << task_id;
   }
@@ -48,7 +48,7 @@ TEST(TaskTest, SimulateTouchingRelation) {
     task.__set_bodyId1(0);
     task.__set_bodyId1(1);
     task.relationships.push_back(::task::SpatialRelationship::TOUCHING_BRIEFLY);
-    const task::TaskSimulation taskSimulation = simulateTask(task, 1000);
+    const task::TaskSimulation taskSimulation = simulateTask(task, 1000, false);
     EXPECT_TRUE(taskSimulation.isSolution)
         << "The empty solutions is expected to be valid for TOUCHING_BRIEFLY";
   }
@@ -58,7 +58,7 @@ TEST(TaskTest, SimulateTouchingRelation) {
     task.__set_bodyId1(0);
     task.__set_bodyId1(1);
     task.relationships.push_back(::task::SpatialRelationship::TOUCHING);
-    const task::TaskSimulation taskSimulation = simulateTask(task, 1000);
+    const task::TaskSimulation taskSimulation = simulateTask(task, 1000, false);
     EXPECT_TRUE(!taskSimulation.isSolution)
         << "The empty solutions is expected to be invalid for TOUCHING";
   }

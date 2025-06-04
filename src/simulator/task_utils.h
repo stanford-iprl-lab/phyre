@@ -43,11 +43,11 @@ std::vector<::scene::Scene> simulateScene(const ::scene::Scene& scene,
 // Returns every stride scene starting from the first one. Note, for big enough
 // stride there is no guarantee that the last sscene in the solved state.
 ::task::TaskSimulation simulateTask(const ::task::Task& task,
-                                    const int num_steps, const int stride = 1);
+                                    const int num_steps, const int stride = 1, const bool noise = false);
 
 // Run simulation in parallel using worker pool of num_workers processes.
 std::vector<::task::TaskSimulation> simulateTasksInParallel(
     const std::vector<::task::Task>& tasks, const int num_workers,
-    const int num_steps, const int stride = 1);
+    const int num_steps, const int stride = 1, const bool noise = false);
 
 #endif  // TASK_UTILS_H

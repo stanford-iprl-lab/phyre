@@ -63,7 +63,7 @@ TEST(UserInputTest, SegfaultUserInput) {
                                         /*allow_occlusions=*/false,
                                         task.scene.width, task.scene.height);
   task.scene.__set_user_input_bodies(bodies);
-  simulateTask(task, 1000);
+  simulateTask(task, 1000, false);
 }
 
 TEST(RenderTest, SimpleBoxRendering) {

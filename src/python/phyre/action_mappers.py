@@ -106,6 +106,14 @@ class ActionMapper():
         Note that if the action is not valid, the function should return empty
         point_list
         """
+    @abc.abstractmethod
+    def user_input_to_action(self, ui: scene_if.UserInput) -> GeneralizedAction:
+        """Converts user input to an array representing a single action"""
+
+    @abc.abstractmethod
+    def get_radius_constraints(self,):
+        """Returns constraints for radius size"""
+
 
 
 def _is_inside_scene(user_input: scene_if.UserInput) -> bool:
@@ -141,6 +149,9 @@ def _is_inside_scene(user_input: scene_if.UserInput) -> bool:
 def _scale(x, low, high):
     return x * (high - low) + low
 
+def _unscale(x, low, high):
+    return (x - low) / (high - low)
+
 
 class BallScaler(object):
 
@@ -154,6 +165,17 @@ class BallScaler(object):
         y = _scale(y, 0, SCENE_HEIGHT - 1)
         radius = _scale(radius, cls.MIN_RADIUS, cls.MAX_RADIUS)
         return x, y, radius
+    
+    @classmethod
+    def unscale(cls, x, y, radius):
+        """
+        Descale coordinates and radius from scene dimensions back to [0,1]
+        """
+        x = _unscale(x, 0, SCENE_WIDTH - 1)
+        y = _unscale(y, 0, SCENE_HEIGHT - 1)
+        radius = _unscale(radius, cls.MIN_RADIUS, cls.MAX_RADIUS)
+        return x, y, radius
+    
 
     @classmethod
     def add_to_user_input(cls, action, user_input):
@@ -221,6 +243,15 @@ class SingleBallActionMapper(ActionMapper):
             return EMPTY_USER_INPUT, False
         _quantize_user_input_in_place(user_input)
         return user_input, True
+    
+    def user_input_to_action(self, ui: scene_if.UserInput):
+        action = ui.balls[0]
+        action = BallScaler.unscale(*action)
+        return action
+    
+    def get_radius_constraints(self,):
+        return (BallScaler.MIN_RADIUS, BallScaler.MAX_RADIUS)
+    
 
 
 class TwoBallsActionMapper(ActionMapper):
@@ -258,6 +289,16 @@ class TwoBallsActionMapper(ActionMapper):
             return EMPTY_USER_INPUT, False
         _quantize_user_input_in_place(user_input)
         return user_input, True
+    
+    def user_input_to_action(self, ui: scene_if.UserInput):
+        action1 = ui.balls[0]
+        action1 = BallScaler.unscale(*action1)
+        action2 = ui.balls[1]
+        action2 = BallScaler.unscale(*action2)
+        return [*action1, *action2]
+    
+    def get_radius_constraints(self,):
+        return (BallScaler.MIN_RADIUS, BallScaler.MAX_RADIUS)
 
 
 def _pdist(p1, p2):

@@ -77,8 +77,9 @@ def simulate_scene(scene: scene_if.Scene,
 
 def simulate_task(task: task_if.Task,
                   steps: int = DEFAULT_MAX_STEPS,
-                  stride: int = DEFAULT_STRIDE) -> task_if.TaskSimulation:
-    result = simulator_bindings.simulate_task(serialize(task), steps, stride)
+                  stride: int = DEFAULT_STRIDE,
+                  noise=False) -> task_if.TaskSimulation:
+    result = simulator_bindings.simulate_task(serialize(task), steps, stride, noise)
     return deserialize(task_if.TaskSimulation(), result)
 
 
@@ -125,6 +126,7 @@ def simulate_task_with_input(task,
                              user_input,
                              steps=DEFAULT_MAX_STEPS,
                              stride=DEFAULT_STRIDE,
+                             noise=False,
                              keep_space_around_bodies=True):
     """Check a solution for a task and return SimulationResult.
 
@@ -138,7 +140,7 @@ def simulate_task_with_input(task,
     task = copy.copy(task)
     task.scene = add_user_input_to_scene(task.scene, user_input,
                                          keep_space_around_bodies)
-    return simulate_task(task, steps, stride)
+    return simulate_task(task, steps, stride, noise)
 
 
 def scene_to_raster(scene: scene_if.Scene) -> np.ndarray:
@@ -193,10 +195,12 @@ def magic_ponies(task,
                  user_input,
                  steps=DEFAULT_MAX_STEPS,
                  stride=DEFAULT_STRIDE,
+                 noise=False,
                  keep_space_around_bodies=True,
                  with_times=False,
                  need_images=False,
-                 need_featurized_objects=False):
+                 need_featurized_objects=False,
+                 need_collisions=False):
     """Check a solution for a task and return intermidiate images.
 
     Args:
@@ -238,26 +242,30 @@ def magic_ponies(task,
         serialized_task = serialize(task)
         height, width = task.scene.height, task.scene.width
     if isinstance(user_input, scene_if.UserInput):
-        is_solved, had_occlusions, packed_images, packed_featurized_objects, number_objects, sim_time, pack_time = (
+        is_solved, had_occlusions, packed_images, packed_featurized_objects, packed_collisions, number_objects, sim_time, pack_time = (
             simulator_bindings.magic_ponies_general(serialized_task,
                                                     serialize(user_input),
                                                     keep_space_around_bodies,
-                                                    steps, stride, need_images,
-                                                    need_featurized_objects))
+                                                    steps, stride, noise, need_images,
+                                                    need_featurized_objects,
+                                                    need_collisions))
     else:
         points, rectangulars, balls = _prepare_user_input(*user_input)
-        is_solved, had_occlusions, packed_images, packed_featurized_objects, number_objects, sim_time, pack_time = (
+        is_solved, had_occlusions, packed_images, packed_featurized_objects, packed_collisions, number_objects, sim_time, pack_time = (
             simulator_bindings.magic_ponies(serialized_task, points,
                                             rectangulars, balls,
                                             keep_space_around_bodies, steps,
-                                            stride, need_images,
-                                            need_featurized_objects))
+                                            stride, noise, need_images,
+                                            need_featurized_objects,
+                                            need_collisions))
 
     packed_images = np.array(packed_images, dtype=np.uint8)
 
     images = packed_images.reshape((-1, height, width))
     packed_featurized_objects = np.array(packed_featurized_objects,
                                          dtype=np.float32)
+    packed_collisions = np.array(packed_collisions, dtype=np.int32).reshape(-1, 3)
+
     if packed_featurized_objects.size == 0:
         # Custom task without any known objects.
         packed_featurized_objects = np.zeros(
@@ -268,9 +276,9 @@ def magic_ponies(task,
     packed_featurized_objects = phyre.simulation.finalize_featurized_objects(
         packed_featurized_objects)
     if with_times:
-        return is_solved, had_occlusions, images, packed_featurized_objects, sim_time, pack_time
+        return is_solved, had_occlusions, images, packed_featurized_objects, packed_collisions, sim_time, pack_time
     else:
-        return is_solved, had_occlusions, images, packed_featurized_objects
+        return is_solved, had_occlusions, images, packed_featurized_objects, packed_collisions
 
 
 def batched_magic_ponies(tasks,
@@ -278,6 +286,7 @@ def batched_magic_ponies(tasks,
                          num_workers,
                          steps=DEFAULT_MAX_STEPS,
                          stride=DEFAULT_STRIDE,
+                         noise=False,
                          keep_space_around_bodies=True,
                          with_times=False,
                          need_images=False,
@@ -289,6 +298,7 @@ def batched_magic_ponies(tasks,
                          ui,
                          steps=steps,
                          stride=stride,
+                         noise=noise,
                          keep_space_around_bodies=keep_space_around_bodies,
                          with_times=with_times,
                          need_images=need_images,

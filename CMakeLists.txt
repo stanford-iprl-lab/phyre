@@ -100,6 +100,10 @@ set(
   gen-cpp/task_constants.h
   gen-cpp/task_types.cpp
   gen-cpp/task_types.h
+  gen-cpp/collision_constants.cpp
+  gen-cpp/collision_constants.h
+  gen-cpp/collision_types.cpp
+  gen-cpp/collision_types.h
 )
 file(GLOB THRIFT_SOURCE_FILES src/if/*.thrift)
 
@@ -116,6 +120,10 @@ add_custom_command(
     gen-py/task/__init__.py
     gen-py/task/constants.py
     gen-py/task/ttypes.py
+    gen-py/collision/TaskService.py
+    gen-py/collision/__init__.py
+    gen-py/collision/constants.py
+    gen-py/collision/ttypes.py
   COMMAND thrift -r --gen py ${CMAKE_SOURCE_DIR}/src/if/task.thrift
   COMMAND sed -i"" "'s/\\([a-z]\\+\\).ttypes/phyre.interface.\\1.ttypes/g'" gen-py/*/*.py
   DEPENDS ${THRIFT_SOURCE_FILES}
@@ -135,6 +143,7 @@ add_custom_command(
     gen-js/scene_types.js
     gen-js/shared_types.js
     gen-js/task_types.js
+    gen-js/collision_types.js
   COMMAND thrift -r --gen js ${CMAKE_SOURCE_DIR}/src/if/task.thrift
   DEPENDS ${THRIFT_SOURCE_FILES}
   COMMENT "Compiling thrift for JS"

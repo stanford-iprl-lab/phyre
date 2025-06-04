@@ -72,12 +72,12 @@ struct SerializedTaskSimulation {
 
 std::vector<::task::TaskSimulation> simulateTasksInParallel(
     const std::vector<::task::Task>& tasks, const int num_workers,
-    const int num_steps, const int stride) {
+    const int num_steps, const int stride, const bool noise) {
   if (num_workers <= 0) {
     // Run single-process version.
     std::vector<::task::TaskSimulation> simulations;
     for (const ::task::Task& task : tasks) {
-      simulations.push_back(simulateTask(task, num_steps, stride));
+      simulations.push_back(simulateTask(task, num_steps, stride, noise));
     }
     return simulations;
   }
@@ -124,7 +124,7 @@ std::vector<::task::TaskSimulation> simulateTasksInParallel(
       for (size_t taskId = workerId; taskId < tasks.size();
            taskId += num_workers) {
         const ::task::TaskSimulation simulation =
-            simulateTask(tasks[taskId], num_steps, stride);
+            simulateTask(tasks[taskId], num_steps, stride, noise);
         const int actualNumSteps = simulation.sceneList.size();
         const SerializedTaskSimulation& layout = sharedBufferLayouts[taskId];
         for (size_t step = 0; step < actualNumSteps; ++step) {

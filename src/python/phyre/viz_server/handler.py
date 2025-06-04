@@ -408,7 +408,7 @@ def get_scene_as_base64_image(scene, resize=None):
 def get_image_as_base64(arr, resize=None):
     img = PIL.Image.fromarray(arr)
     if resize is not None:
-        img.thumbnail((resize, resize), PIL.Image.ANTIALIAS)
+        img.thumbnail((resize, resize), PIL.Image.Resampling.LANCZOS)
     img_buffer = io.BytesIO()
     img.save(img_buffer, format='PNG')
     return base64.b64encode(img_buffer.getvalue()).decode('utf8')

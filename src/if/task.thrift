@@ -14,6 +14,7 @@
 
 include "shared.thrift"
 include "scene.thrift"
+include "collision.thrift"
 
 namespace cpp task
 
@@ -59,9 +60,10 @@ struct TaskSimulation {
   2: optional list<scene.Scene> sceneList,
   // Whether the task was in solved state at this timestamp.
   3: optional list<bool> solvedStateList,
+  4: optional list<collision.Collision> collisionList,
   // Number of steps simulation ran for. It matches sizes of the lists if
   // stride is 1.
-  4: optional i32 stepsSimulated,
+  5: optional i32 stepsSimulated,
 }
 
 struct TaskSimulationWithMeta {

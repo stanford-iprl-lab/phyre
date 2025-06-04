@@ -16,11 +16,149 @@
 #include "thrift_box2d_conversion.h"
 
 #include <iostream>
+#include <random>
 
 namespace {
+
 struct SimulationRequest {
   int maxSteps;
   int stride;
+  bool noise;
+};
+
+class PhyreContactListener : public b2ContactListener {
+    private:
+      std::vector<::collision::Collision> collisionList;
+      int currentTimestep;
+
+      // Noise 
+      float directionNoise;
+      float elasticityNoise;
+      std::mt19937 gen;
+      std::normal_distribution<float> normalDist;
+      // Set to track collisions we've already applied noise to
+      std::set<std::pair<int, int>> processedCollisions;
+
+    public:
+      PhyreContactListener(float noiseCollisionDirection = 0.0f, float noiseCollisionElasticity = 0.0f) 
+        : currentTimestep(0)
+        , directionNoise(noiseCollisionDirection)
+        , elasticityNoise(noiseCollisionElasticity)
+        , gen(std::random_device{}())
+        , normalDist(0.0f, 1.0f) {
+      }
+
+      void BeginContact(b2Contact* contact) {
+        b2Body* body1 = static_cast<b2Body*>(contact->GetFixtureA()->GetBody());
+        b2Body* body2 = static_cast<b2Body*>(contact->GetFixtureB()->GetBody());
+        Box2dData* body1_data = static_cast<Box2dData*>(body1->GetUserData());
+        Box2dData* body2_data = static_cast<Box2dData*>(body2->GetUserData());
+
+        if (body1->GetType() != 2 || body2->GetType() != 2){
+          return;
+        }
+        
+        ::collision::Collision collision_record;
+        collision_record.bodyId1 = body1_data->object_id;
+        collision_record.bodyId2 = body2_data->object_id;
+        collision_record.timestep = currentTimestep;
+        collisionList.push_back(collision_record);
+      }
+
+      void EndContact(b2Contact* contact) override {
+        b2Body* body1 = static_cast<b2Body*>(contact->GetFixtureA()->GetBody());
+        b2Body* body2 = static_cast<b2Body*>(contact->GetFixtureB()->GetBody());
+        Box2dData* body1_data = static_cast<Box2dData*>(body1->GetUserData());
+        Box2dData* body2_data = static_cast<Box2dData*>(body2->GetUserData());
+
+        if (body1->GetType() != 2 || body2->GetType() != 2){
+          return;
+        }
+
+        // std::cout << currentTimestep << " Contact end " << body1_data->object_id << "-" << body2_data->object_id << std::endl;
+
+        processedCollisions.erase(std::make_pair(body1_data->object_id, body2_data->object_id));
+      }
+
+      void PreSolve(b2Contact* contact, const b2Manifold* oldManifold) override {
+        if (directionNoise == 0.0f && elasticityNoise == 0.0f) {
+            return;  // Skip if no noise is configured
+        }
+
+        b2Body* body1 = static_cast<b2Body*>(contact->GetFixtureA()->GetBody());
+        b2Body* body2 = static_cast<b2Body*>(contact->GetFixtureB()->GetBody());
+        Box2dData* body1_data = static_cast<Box2dData*>(body1->GetUserData());
+        Box2dData* body2_data = static_cast<Box2dData*>(body2->GetUserData());
+
+        if (body1->GetType() != 2 || body2->GetType() != 2){
+          return;
+        }
+
+        auto collisionPair = std::make_pair(body1_data->object_id, body2_data->object_id);
+        // Check if we've already processed this collision
+        if (processedCollisions.find(collisionPair) != processedCollisions.end()) {
+          return;  // Skip if we've already added noise to this collision
+        }
+        
+        // Add the collision to our processed set
+        processedCollisions.insert(collisionPair);
+        
+        // std::cout << currentTimestep << " Adding noise " << body1_data->object_id << "-" << body2_data->object_id << std::endl;
+
+        // Get collision normal
+        b2WorldManifold worldManifold;
+        contact->GetWorldManifold(&worldManifold);
+        b2Vec2 normal = worldManifold.normal;
+
+        // std::cout << normal.x << ", " << normal.y << std::endl<< std::endl;
+        
+
+        // Add noise to collision normal direction
+        if (directionNoise > 0.0f) {
+            float angleNoise = directionNoise * normalDist(gen);
+            float cos_theta = std::cos(angleNoise);
+            float sin_theta = std::sin(angleNoise);
+            b2Vec2 noisyNormal(
+                normal.x * cos_theta - normal.y * sin_theta,
+                normal.x * sin_theta + normal.y * cos_theta
+            );
+            
+            // std::cout << noisyNormal.x << ", " << noisyNormal.y << std::endl << std::endl;
+
+            // Modify the manifold normal
+            b2Manifold* manifold = contact->GetManifold();
+            manifold->localNormal = contact->GetFixtureA()->GetBody()->GetLocalVector(noisyNormal);
+        }
+
+        // Add noise to restitution
+        if (elasticityNoise > 0.0f) {
+            b2Fixture* fixtureA = contact->GetFixtureA();
+            b2Fixture* fixtureB = contact->GetFixtureB();
+            
+            float baseRestitution = std::max(fixtureA->GetRestitution(), fixtureB->GetRestitution());
+            float noisyRestitution = baseRestitution + elasticityNoise * normalDist(gen);
+            noisyRestitution = std::max(0.0f, std::min(1.0f, noisyRestitution));
+            
+            contact->SetRestitution(noisyRestitution);
+        }
+      }
+
+      void UpdateTimestep(int timestep) {
+        currentTimestep = timestep;
+      }
+
+      const std::vector<::collision::Collision>& GetCollisionList() const {
+        return collisionList;
+      }
+
+      void ClearHistory() {
+        collisionList.clear();
+      }
+
+      void SetNoiseParameters(float direction_noise, float elasticity_noise) {
+          directionNoise = direction_noise;
+          elasticityNoise = elasticity_noise;
+      }
 };
 
 // Runs simulation for the scene. If task is not nullptr, is-task-solved checks
@@ -53,10 +191,18 @@ struct SimulationRequest {
   const bool allowInstantSolution =
       (task != nullptr && task->relationships.size() == 1 &&
        task->relationships[0] == ::task::SpatialRelationship::TOUCHING_BRIEFLY);
+
+  PhyreContactListener contactListener;
+  world->SetContactListener(&contactListener);
+  if (request.noise == true) {
+    contactListener.SetNoiseParameters(0.1f, 0.1f);
+  }
+  
   for (; step < request.maxSteps; step++) {
     // Instruct the world to perform a single step of simulation.
     // It is generally best to keep the time step and iterations fixed.
     world->Step(kTimeStep, kVelocityIterations, kPositionIterations);
+    contactListener.UpdateTimestep(step);
     if (request.stride > 0 && step % request.stride == 0) {
       scenes.push_back(updateSceneFromWorld(scene, *world));
     }
@@ -101,6 +247,7 @@ struct SimulationRequest {
   if (task != nullptr) {
     taskSimulation.__set_solvedStateList(solveStateList);
     taskSimulation.__set_isSolution(solved);
+    taskSimulation.__set_collisionList(contactListener.GetCollisionList());
   }
 
   return taskSimulation;
@@ -109,13 +256,13 @@ struct SimulationRequest {
 
 std::vector<::scene::Scene> simulateScene(const ::scene::Scene &scene,
                                           const int num_steps) {
-  const SimulationRequest request{num_steps, 1};
+  const SimulationRequest request{num_steps, 1, false};
   const auto simulation = simulateTask(scene, request, /*task=*/nullptr);
   return simulation.sceneList;
 }
 
 ::task::TaskSimulation simulateTask(const ::task::Task &task,
-                                    const int num_steps, const int stride) {
-  const SimulationRequest request{num_steps, stride};
+                                    const int num_steps, const int stride, const bool noise) {
+  const SimulationRequest request{num_steps, stride, noise};
   return simulateTask(task.scene, request, &task);
 }

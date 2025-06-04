@@ -413,6 +413,12 @@ void featurizeScene(const ::scene::Scene& scene, float* buffer) {
   }
 }
 
+void featurizeCollision(const ::collision::Collision &collision, int* buffer) {
+  *buffer++ = static_cast<int>(collision.bodyId1);
+  *buffer++ = static_cast<int>(collision.bodyId2);
+  *buffer++ = static_cast<int>(collision.timestep);
+}
+
 // Convert angle in (-float-min, float-max) to be in [0,2pi)
 float wrapAngleRadians(float angle) {
   angle = fmod(angle, 2.0 * M_PI);

@@ -22,6 +22,7 @@ from phyre.objects_util import featurized_objects_vector_to_raster
 from phyre.simulation import FeaturizedObjects, Simulation
 from phyre.simulation_cache import SimulationCache, get_default_100k_cache
 from phyre.vis import observations_to_float_rgb, observations_to_uint8_rgb
+from phyre.phyre_utils import *
 
 ACTION_TIERS: Tuple[str] = tuple(sorted(_action_mappers.MAIN_ACITON_MAPPERS))
 """List of action tiers in phyre.

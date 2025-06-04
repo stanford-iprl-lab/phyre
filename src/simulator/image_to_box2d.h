@@ -18,6 +18,7 @@
 #include <vector>
 
 #include "gen-cpp/scene_types.h"
+#include "gen-cpp/collision_types.h"
 
 // Clean user input and convert to a list of Body objects.
 // Balls are added first as is if they don't occlude with sceneBodies.
@@ -82,6 +83,7 @@ std::vector<::scene::IntVector> cleanUpPoints(
 
 float wrapAngleRadians(float angle);
 void featurizeScene(const ::scene::Scene& scene, float* buffer);
+void featurizeCollision(const ::collision::Collision& collision, int* buffer);
 void featurizeBody(const ::scene::Body& body, int sceneHeight, int sceneWidth,
                    float* buffer);
 

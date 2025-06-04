@@ -41,7 +41,7 @@ NOT_SOLVED = int(phyre.action_simulator.SimulationStatus.NOT_SOLVED)
 
 def get_default_100k_cache(tier: str) -> 'SimulationCache':
     """Get cache with results for simulation of 100k "default" actions."""
-    url = (f'https://dl.fbaipublicfiles.com/phyre/simulation_cache/v1'
+    url = (f'https://dl.fbaipublicfiles.com/phyre/simulation_cache/v0'
            f'/{DEFAULT_NUM_ACTIONS}/{tier}/{CACHE_FILE_NAME}')
 
     cache_dir = (phyre.simulation_cache.get_cache_folder(DEFAULT_NUM_ACTIONS) /
@@ -57,10 +57,10 @@ def get_default_100k_cache(tier: str) -> 'SimulationCache':
 
 
 def _get_root_cache_folder() -> pathlib.Path:
-    cache_root = pathlib.Path(
-        os.environ.get('XDG_CACHE_HOME', os.path.expanduser('~/.cache')))
-    return pathlib.Path(os.environ.get(PHYRE_CACHE_ENV, cache_root / 'phyre'))
-
+    # cache_root = pathlib.Path(
+    #     os.environ.get('XDG_CACHE_HOME', os.path.expanduser('~/.cache')))
+    # return pathlib.Path(os.environ.get(PHYRE_CACHE_ENV, cache_root / 'phyre'))
+    return pathlib.Path(os.path.join(os.path.dirname(os.path.realpath(__file__)), 'cache'))
 
 def get_cache_folder(action_size: int) -> pathlib.Path:
     """Path to the final cache files."""

@@ -108,13 +108,16 @@ class Simulation(object):
                  *,
                  status=None,
                  images: Optional[np.ndarray] = None,
-                 featurized_objects: Optional[np.ndarray] = None):
+                 featurized_objects: Optional[np.ndarray] = None,
+                 collisions: Optional[np.ndarray] = None):
         self.status = status
         self.images = images
         if featurized_objects is not None:
             self.featurized_objects = FeaturizedObjects(featurized_objects)
         else:
             self.featurized_objects = None
+        if collisions is not None:
+            self.collisions = collisions
 
 
 class FeaturizedObjects():

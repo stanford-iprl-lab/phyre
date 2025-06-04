@@ -17,6 +17,7 @@
 #include <chrono>
 #include <memory>
 #include <vector>
+#include <iostream>
 
 #include <thrift/protocol/TBinaryProtocol.h>
 #include <thrift/transport/TBufferTransports.h>
@@ -24,6 +25,7 @@
 #include "creator.h"
 #include "gen-cpp/scene_types.h"
 #include "gen-cpp/task_types.h"
+#include "gen-cpp/collision_constants.h"
 #include "image_to_box2d.h"
 #include "task_utils.h"
 #include "thrift_box2d_conversion.h"
@@ -37,6 +39,7 @@ using ::scene::UserInput;
 using ::scene::UserInputStatus;
 using ::task::Task;
 using ::task::TaskSimulation;
+using ::collision::Collision;
 namespace py = pybind11;
 
 namespace {
@@ -146,19 +149,20 @@ bool hadSimulationOcclusions(const TaskSimulation &simulation) {
 }
 
 auto magic_ponies(const py::bytes &serialized_task, const UserInput &user_input,
-                  bool keep_space_around_bodies, int steps, int stride,
-                  bool need_images, bool need_featurized_objects) {
+                  bool keep_space_around_bodies, int steps, int stride, bool noise,
+                  bool need_images, bool need_featurized_objects, bool need_collisions) {
   SimpleTimer timer;
   Task task = deserialize<Task>(serialized_task);
   addUserInputToScene(user_input, keep_space_around_bodies,
                       /*allow_occlusions=*/false, &task.scene);
-  auto simulation = simulateTask(task, steps, stride);
+  auto simulation = simulateTask(task, steps, stride, noise);
 
   const double simulation_seconds = timer.GetSeconds();
   const bool isSolved = simulation.isSolution;
   const bool hadOcclusions = hadSimulationOcclusions(simulation);
 
   const int numImagesTotal = need_images ? simulation.sceneList.size() : 0;
+  const int numCollisionsTotal = need_collisions ? simulation.collisionList.size() : 0;
   const int numScenesTotal =
       need_featurized_objects ? simulation.sceneList.size() : 0;
 
@@ -171,6 +175,17 @@ auto magic_ponies(const py::bytes &serialized_task, const UserInput &user_input,
       writeIndex += imageSize;
     }
   }
+
+  const int collisionSize = collision::g_collision_constants.COLLISION_SIZE;
+  int *packedCollisions = new int[collisionSize * numCollisionsTotal];
+  if (numCollisionsTotal > 0) {
+    int writeIndex = 0;
+    for (const Collision &collision : simulation.collisionList) {
+      featurizeCollision(collision, packedCollisions + writeIndex);
+      writeIndex += collisionSize;
+    }
+  }
+
 
   const int numSceneObjects = getNumObjects(simulation);
   float *packedVectorizedBodies =
@@ -193,15 +208,24 @@ auto magic_ponies(const py::bytes &serialized_task, const UserInput &user_input,
     auto *foo = reinterpret_cast<float *>(f);
     delete[] foo;
   });
+  py::capsule freeCollisionsWhenDone(packedCollisions, [](void *f) {
+    auto *foo = reinterpret_cast<int *>(f);
+    delete[] foo;
+  });
+
   auto packedImagesArray =
       py::array_t<uint8_t>({numImagesTotal * imageSize},  // shape
                            {sizeof(uint8_t)}, packedImages, freeImagesWhenDone);
   auto packedObjectsArray = py::array_t<float>(
       {numScenesTotal * numSceneObjects * kObjectFeatureSize},  // shape
       {sizeof(float)}, packedVectorizedBodies, freeObjectsWhenDone);
+  auto packedCollisionsArray = py::array_t<int>(
+      {numCollisionsTotal * collisionSize},  // shape
+      {sizeof(int)}, packedCollisions, freeCollisionsWhenDone);
+  
   const double pack_seconds = timer.GetSeconds();
   return std::make_tuple(isSolved, hadOcclusions, packedImagesArray,
-                         packedObjectsArray, numSceneObjects,
+                         packedObjectsArray, packedCollisionsArray, numSceneObjects,
                          simulation_seconds, pack_seconds);
 }
 }  // namespace
@@ -271,9 +295,9 @@ PYBIND11_MODULE(simulator_bindings, m) {
 
   m.def(
       "simulate_task",
-      [](const py::bytes &task, int steps, int stride) {
+      [](const py::bytes &task, int steps, int stride, bool noise) {
         const TaskSimulation results =
-            simulateTask(deserialize<Task>(task), steps, stride);
+            simulateTask(deserialize<Task>(task), steps, stride, noise);
         return serialize(results);
       },
       "Produce TaskSimulation");
@@ -283,13 +307,13 @@ PYBIND11_MODULE(simulator_bindings, m) {
       [](const py::bytes &serialized_task, py::array_t<int32_t> points,
          const std::vector<float> &rectangulars_vertices_flatten,
          const std::vector<float> &balls_flatten, bool keep_space_around_bodies,
-         int steps, int stride, bool need_images,
-         bool need_featurized_objects) {
+         int steps, int stride, bool noise, bool need_images,
+         bool need_featurized_objects, bool need_collisions) {
         const UserInput user_input = buildUserInputObject(
             points, rectangulars_vertices_flatten, balls_flatten);
         return magic_ponies(serialized_task, user_input,
-                            keep_space_around_bodies, steps, stride,
-                            need_images, need_featurized_objects
+                            keep_space_around_bodies, steps, stride, noise,
+                            need_images, need_featurized_objects, need_collisions
 
         );
       },
@@ -303,12 +327,12 @@ PYBIND11_MODULE(simulator_bindings, m) {
       [](const py::bytes &serialized_task,
          const py::bytes &serialized_user_input,
 
-         bool keep_space_around_bodies, int steps, int stride, bool need_images,
-         bool need_featurized_objects) {
+         bool keep_space_around_bodies, int steps, int stride, bool noise, bool need_images,
+         bool need_featurized_objects, bool need_collisions) {
         return magic_ponies(serialized_task,
                             deserialize<UserInput>(serialized_user_input),
-                            keep_space_around_bodies, steps, stride,
-                            need_images, need_featurized_objects
+                            keep_space_around_bodies, steps, stride, noise,
+                            need_images, need_featurized_objects, need_collisions
 
         );
       },
@@ -338,6 +362,16 @@ PYBIND11_MODULE(simulator_bindings, m) {
       },
       "Convert Scene to featurized matrix of object vectors");
 
+  m.def(
+      "featurize_collision",
+      [](const py::bytes &collision) {
+        const Collision collisionObj = deserialize<Collision>(collision);
+        std::vector<int> collisionsFeaturized(collision::g_collision_constants.COLLISION_SIZE);
+        featurizeCollision(collisionObj, collisionsFeaturized.data());
+        return collisionsFeaturized;
+      },
+      "Convert Scene to featurized matrix of object vectors");
+
   // This function is left here to suppress odd weak-reference warning in
   // Thrift. It's not doing anything useful.
   m.def(
@@ -347,7 +381,7 @@ PYBIND11_MODULE(simulator_bindings, m) {
          bool keep_space_around_bodies, int num_workers, int steps) {
         std::vector<Task> tasksWithInputs;
         auto simulations = simulateTasksInParallel(tasksWithInputs, num_workers,
-                                                   steps, /*stride=*/-1);
+                                                   steps, /*stride=*/-1, false);
         std::vector<bool> isSolved;
         return isSolved;
       },
